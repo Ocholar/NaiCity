@@ -1,0 +1,87 @@
+{
+    "name": "5. Follow-Up Intelligence",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "cronExpression",
+                            "expression": "0 10 * * *"
+                        }
+                    ]
+                }
+            },
+            "id": "n1a2f082-72a2-b281-0081-8b9cad0e1f20",
+            "name": "Schedule Trigger",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT * FROM leads WHERE status = 'contacted' AND last_contact < NOW() - INTERVAL '48 hours'"
+            },
+            "id": "o81d4fae-7dec-11d0-a765-00a0c91e6bf6",
+            "name": "Find Follow-Up Candidates",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4o",
+                "messagesByUi": {
+                    "message": [
+                        {
+                            "role": "system",
+                            "content": "You are following up with a Nairobi business owner. Be polite."
+                        },
+                        {
+                            "content": "Generate a follow-up message for {{ $json.business_name }}."
+                        }
+                    ]
+                }
+            },
+            "id": "p3b8d1b6-0b3b-4b1a-9c1a-1a2b3c4d5e6f",
+            "name": "OpenAI GPT-4o",
+            "type": "n8n-nodes-base.openAi",
+            "typeVersion": 1,
+            "position": [
+                650,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Schedule Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Find Follow-Up Candidates",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Find Follow-Up Candidates": {
+            "main": [
+                [
+                    {
+                        "node": "OpenAI GPT-4o",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

@@ -1,0 +1,86 @@
+{
+    "name": "2. AI Message Generation",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "lead-discovery",
+                "options": {}
+            },
+            "id": "e492bff0-e1e0-43ce-a4db-912808c32493",
+            "name": "Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4o",
+                "messagesByUi": {
+                    "message": [
+                        {
+                            "role": "system",
+                            "content": "ROLE: You are an elite Nairobi-based business consultant who genuinely helps local businesses grow."
+                        },
+                        {
+                            "content": "BUSINESS CONTEXT:\nName: {{ $json.business_name }}\nCategory: {{ $json.category }}\nLocation: {{ $json.location_area }}\n\nGenerate initial contact message variants."
+                        }
+                    ]
+                },
+                "options": {
+                    "temperature": 0.7
+                }
+            },
+            "id": "f5dae3d8-2d5d-6d3c-bd3c-3c4d5e6f7a8b",
+            "name": "OpenAI GPT-4o",
+            "type": "n8n-nodes-base.openAi",
+            "typeVersion": 1,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "INSERT INTO messages (lead_id, message_variant_a, confidence_score) VALUES ($1, $2, $3)",
+                "queryParams": "={{ [ $json.lead_id, $json.choices[0].message.content, 0.9 ] }}"
+            },
+            "id": "g2b30193-83b3-c392-1192-9cad0e1f2031",
+            "name": "PostgreSQL Insert",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                650,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "OpenAI GPT-4o",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "OpenAI GPT-4o": {
+            "main": [
+                [
+                    {
+                        "node": "PostgreSQL Insert",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

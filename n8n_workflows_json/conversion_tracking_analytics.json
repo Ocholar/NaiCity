@@ -1,0 +1,96 @@
+{
+    "name": "6. Conversion Tracking & Analytics",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "naicity-conversion",
+                "options": {}
+            },
+            "id": "q1a2f082-72a2-b281-0081-8b9cad0e1f20",
+            "name": "Conversion Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "cronExpression",
+                            "expression": "59 23 * * *"
+                        }
+                    ]
+                }
+            },
+            "id": "r81d4fa2-7dec-11d0-a765-00a0c91e6bf6",
+            "name": "Daily Summary Cron",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                250,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "UPDATE leads SET status = 'converted' WHERE business_name = $1",
+                "queryParams": "={{ [ $json.body.business_name ] }}"
+            },
+            "id": "s3b8d1b6-0b3b-4b1a-9c1a-1a2b3c4d5e6f",
+            "name": "Update Lead Status",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={ \"chat_id\": \"{{ $env.TELEGRAM_CHAT_ID }}\", \"text\": \"New Conversion! {{ $json.body.business_name }} - Commission: {{ $json.body.commission }}\" }"
+            },
+            "id": "t1a2f082-72a2-b281-0081-8b9cad0e1f20",
+            "name": "Alert Telegram",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                650,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Conversion Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Update Lead Status",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Update Lead Status": {
+            "main": [
+                [
+                    {
+                        "node": "Alert Telegram",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

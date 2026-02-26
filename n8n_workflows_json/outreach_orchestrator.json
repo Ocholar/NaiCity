@@ -1,0 +1,82 @@
+{
+    "name": "3. Outreach Orchestrator",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "minutes",
+                            "minutesInterval": 15
+                        }
+                    ]
+                }
+            },
+            "id": "h1a2f082-72a2-b281-0081-8b9cad0e1f20",
+            "name": "Every 15 Min",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT * FROM leads WHERE status = 'enriched' LIMIT 10"
+            },
+            "id": "i81d4fae-7dec-11d0-a765-00a0c91e6bf6",
+            "name": "Get Leads",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "=https://graph.facebook.com/v18.0/{{ $env.WHATSAPP_PHONE_NUMBER_ID }}/messages",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={ \"messaging_product\": \"whatsapp\", \"to\": \"{{ $json.contact_phone }}\", \"type\": \"text\", \"text\": { \"body\": \"Hello from NaiCity!\" } }"
+            },
+            "id": "j3b8d1b6-0b3b-4b1a-9c1a-1a2b3c4d5e6f",
+            "name": "WhatsApp Send",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                650,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Every 15 Min": {
+            "main": [
+                [
+                    {
+                        "node": "Get Leads",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Leads": {
+            "main": [
+                [
+                    {
+                        "node": "WhatsApp Send",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

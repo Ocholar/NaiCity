@@ -1,0 +1,90 @@
+{
+    "name": "1. Lead Discovery & Enrichment",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "cronExpression",
+                            "expression": "0 8 * * *"
+                        }
+                    ]
+                }
+            },
+            "id": "a9a2f082-72a2-b281-0081-8b9cad0e1f20",
+            "name": "Schedule Trigger",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://maps.googleapis.com/maps/api/place/textsearch/json",
+                "sendQueryParameters": true,
+                "queryParametersUi": {
+                    "parameter": [
+                        {
+                            "name": "query",
+                            "value": "={{ $json.category }} in {{ $json.area }}"
+                        },
+                        {
+                            "name": "key",
+                            "value": "={{ $env.GOOGLE_MAPS_API_KEY }}"
+                        }
+                    ]
+                }
+            },
+            "id": "b1d4fae-7dec-11d0-a765-00a0c91e6bf6",
+            "name": "Google Maps Places",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                450,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "INSERT INTO leads (business_name, category, location_area, status) VALUES ($1, $2, $3, 'enriched')",
+                "queryParams": "={{ [ $json.name, $json.category, $json.area ] }}"
+            },
+            "id": "c3b8d1b6-0b3b-4b1a-9c1a-1a2b3c4d5e6f",
+            "name": "PostgreSQL Insert",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                650,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Schedule Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Google Maps Places",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Google Maps Places": {
+            "main": [
+                [
+                    {
+                        "node": "PostgreSQL Insert",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}
