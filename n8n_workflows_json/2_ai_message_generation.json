@@ -1,0 +1,131 @@
+{
+    "name": "2. AI Message Generation",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "webhook/lead-discovery"
+            },
+            "id": "webhook_node",
+            "name": "Webhook Trigger",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "// Assemble Context\nreturn items;"
+            },
+            "id": "context_node",
+            "name": "Set Context & Formatting",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4o",
+                "messagesByUi": {
+                    "message": [
+                        {
+                            "role": "system",
+                            "content": "ROLE: Elite Nairobi business consultant."
+                        },
+                        {
+                            "content": "Generate variants for {{ $json.business_name }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "openai_node",
+            "name": "OpenAI GPT-4o",
+            "type": "n8n-nodes-base.openAi",
+            "typeVersion": 1,
+            "position": [
+                650,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "// Profanity check & AB Test Variant Assignment\nreturn items;"
+            },
+            "id": "post_process_node",
+            "name": "Post-Processing Filter",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                850,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "INSERT INTO messages (lead_id, message_variant_a, message_variant_b, message_variant_c) VALUES ($1, $2, $3, $4)",
+                "queryParams": "={{ [ $json.lead_id, $json.variant_a, $json.variant_b, $json.variant_c ] }}"
+            },
+            "id": "db_insert_node",
+            "name": "PostgreSQL Record",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                1050,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Set Context & Formatting",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Set Context & Formatting": {
+            "main": [
+                [
+                    {
+                        "node": "OpenAI GPT-4o",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "OpenAI GPT-4o": {
+            "main": [
+                [
+                    {
+                        "node": "Post-Processing Filter",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Post-Processing Filter": {
+            "main": [
+                [
+                    {
+                        "node": "PostgreSQL Record",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

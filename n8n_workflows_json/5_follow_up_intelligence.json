@@ -1,0 +1,189 @@
+{
+    "name": "5. Follow-Up Intelligence",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "cronExpression",
+                            "expression": "0 10 * * *"
+                        }
+                    ]
+                }
+            },
+            "id": "follow_trigger_node",
+            "name": "Daily Trigger (10:00)",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT * FROM leads WHERE status NOT IN ('converted', 'dnc', 'nurture') AND last_contact < NOW() - INTERVAL '48 hours' AND (EXTRACT(EPOCH FROM (NOW() - last_contact))/3600) < 500"
+            },
+            "id": "candidate_query_node",
+            "name": "Find Candidates",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "// Determine Attempt Number\nreturn items;"
+            },
+            "id": "attempt_node",
+            "name": "Determine Follow-Up Attempt",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                650,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT content FROM conversations WHERE lead_id=$1 AND direction='outbound' ORDER BY created_at DESC LIMIT 1",
+                "queryParams": "={{ [ $json.lead_id ] }}"
+            },
+            "id": "prev_msg_node",
+            "name": "Get Previous Message",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                850,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4o",
+                "messagesByUi": {
+                    "message": [
+                        {
+                            "role": "system",
+                            "content": "Generate a lower-pressure follow-up referencing previous message."
+                        },
+                        {
+                            "content": "Previous: {{ $json.prev_message }}\nAttempt #: {{ $json.attempt }}"
+                        }
+                    ]
+                }
+            },
+            "id": "gpt4_follow_node",
+            "name": "OpenAI Follow-Up Gen",
+            "type": "n8n-nodes-base.openAi",
+            "typeVersion": 1,
+            "position": [
+                1050,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "INSERT INTO messages (lead_id, message_variant_a, confidence_score) VALUES ($1, $2, 0.9)",
+                "queryParams": "={{ [ $json.lead_id, $json.generated_follow_up ] }}"
+            },
+            "id": "queue_followup_node",
+            "name": "Queue Message",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                1250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "UPDATE leads SET last_contact=NULL WHERE lead_id=$1",
+                "queryParams": "={{ [ $json.lead_id ] }}"
+            },
+            "id": "clear_contact_node",
+            "name": "Clear Last Contact (Trigger Orchestrator)",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                1450,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Daily Trigger (10:00)": {
+            "main": [
+                [
+                    {
+                        "node": "Find Candidates",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Find Candidates": {
+            "main": [
+                [
+                    {
+                        "node": "Determine Follow-Up Attempt",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Determine Follow-Up Attempt": {
+            "main": [
+                [
+                    {
+                        "node": "Get Previous Message",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Previous Message": {
+            "main": [
+                [
+                    {
+                        "node": "OpenAI Follow-Up Gen",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "OpenAI Follow-Up Gen": {
+            "main": [
+                [
+                    {
+                        "node": "Queue Message",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Queue Message": {
+            "main": [
+                [
+                    {
+                        "node": "Clear Last Contact (Trigger Orchestrator)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

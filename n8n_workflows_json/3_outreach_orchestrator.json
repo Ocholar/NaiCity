@@ -1,0 +1,195 @@
+{
+    "name": "3. Outreach Orchestrator",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "minutes",
+                            "minutesInterval": 15
+                        }
+                    ]
+                }
+            },
+            "id": "cron_trigger_node",
+            "name": "Every 15 Min (08:00-18:00)",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                250,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT * FROM leads WHERE status IN ('enriched', 'nurture') AND (last_contact IS NULL OR last_contact < NOW() - INTERVAL '1 day') LIMIT 10"
+            },
+            "id": "get_leads_node",
+            "name": "Fetch Eligible Leads",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                450,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "// Rate Limit Check against Redis (pseudo-code)\nreturn items;"
+            },
+            "id": "rate_limit_node",
+            "name": "Redis Rate Limit Check",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                650,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.contact_phone != null }}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "id": "channel_decision_node",
+            "name": "Channel Decision (If/Switch)",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1.1,
+            "position": [
+                850,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://graph.facebook.com/v18.0/{{ $env.WHATSAPP_PHONE_NUMBER_ID }}/messages",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={ \"messaging_product\": \"whatsapp\", \"to\": \"{{ $json.contact_phone }}\", \"type\": \"text\", \"text\": { \"body\": \"{{ $json.assigned_message }}\" } }"
+            },
+            "id": "whatsapp_send_node",
+            "name": "WhatsApp API Send",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                1050,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.sendgrid.com/v3/mail/send"
+            },
+            "id": "email_send_node",
+            "name": "SendGrid Email Fallback",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                1050,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "UPDATE leads SET status='contacted', channel_used=$2, last_contact=NOW() WHERE lead_id=$1",
+                "queryParams": "={{ [ $json.lead_id, 'whatsapp' ] }}"
+            },
+            "id": "update_leads_node",
+            "name": "Update Status Postgres",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                1250,
+                400
+            ]
+        }
+    ],
+    "connections": {
+        "Every 15 Min (08:00-18:00)": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Eligible Leads",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Eligible Leads": {
+            "main": [
+                [
+                    {
+                        "node": "Redis Rate Limit Check",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Redis Rate Limit Check": {
+            "main": [
+                [
+                    {
+                        "node": "Channel Decision (If/Switch)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Channel Decision (If/Switch)": {
+            "main": [
+                [
+                    {
+                        "node": "WhatsApp API Send",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "SendGrid Email Fallback",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "WhatsApp API Send": {
+            "main": [
+                [
+                    {
+                        "node": "Update Status Postgres",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "SendGrid Email Fallback": {
+            "main": [
+                [
+                    {
+                        "node": "Update Status Postgres",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

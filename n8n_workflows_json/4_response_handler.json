@@ -1,0 +1,188 @@
+{
+    "name": "4. Response Handler",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "webhook/whatsapp-inbound",
+                "options": {}
+            },
+            "id": "inbound_webhook",
+            "name": "WhatsApp Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "INSERT INTO conversations (lead_id, message_id, direction, content) VALUES ((SELECT lead_id FROM leads WHERE contact_phone = $1), $2, 'inbound', $3)",
+                "queryParams": "={{ [ $json.body.entry[0].changes[0].value.messages[0].from, $json.body.entry[0].changes[0].value.messages[0].id, $json.body.entry[0].changes[0].value.messages[0].text.body ] }}"
+            },
+            "id": "store_raw_node",
+            "name": "Store Raw Inbound",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "model": "claude-3-haiku-20240307",
+                "prompt": "={{ $json.body.entry[0].changes[0].value.messages[0].text.body }}\n\nClassify intent: INTERESTED, QUESTION, OBJECTION, NOT_INTERESTED, SPAM."
+            },
+            "id": "anthropic_node",
+            "name": "Anthropic Claude 3 Haiku",
+            "type": "n8n-nodes-base.anthropic",
+            "typeVersion": 1,
+            "position": [
+                650,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT * FROM get_conversation_context((SELECT lead_id FROM leads WHERE contact_phone = $1), 5)",
+                "queryParams": "={{ [ $json.from ] }}"
+            },
+            "id": "context_assembly_node",
+            "name": "Postgres Context Retrieval",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                850,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4o",
+                "messagesByUi": {
+                    "message": [
+                        {
+                            "role": "system",
+                            "content": "You are a WhatsApp assistant. Context: {{ $json.history }} Intent: {{ $json.intent }}"
+                        },
+                        {
+                            "content": "Reply to: {{ $json.incomingMessage }}"
+                        }
+                    ]
+                }
+            },
+            "id": "openai_reply_node",
+            "name": "OpenAI GPT-4o Response",
+            "type": "n8n-nodes-base.openAi",
+            "typeVersion": 1,
+            "position": [
+                1050,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://graph.facebook.com/v18.0/{{ $env.WHATSAPP_PHONE_NUMBER_ID }}/messages",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={ \"messaging_product\": \"whatsapp\", \"to\": \"{{ $json.to_phone }}\", \"type\": \"text\", \"text\": { \"body\": \"{{ $json.ai_response }}\" } }"
+            },
+            "id": "whatsapp_outbound_node",
+            "name": "Send WhatsApp Reply",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                1250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "UPDATE leads SET status='responded', last_contact=NOW() WHERE contact_phone=$1",
+                "queryParams": "={{ [ $json.to_phone ] }}"
+            },
+            "id": "update_lead_reply_node",
+            "name": "Update Lead Status",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                1450,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "WhatsApp Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Store Raw Inbound",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Store Raw Inbound": {
+            "main": [
+                [
+                    {
+                        "node": "Anthropic Claude 3 Haiku",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Anthropic Claude 3 Haiku": {
+            "main": [
+                [
+                    {
+                        "node": "Postgres Context Retrieval",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Postgres Context Retrieval": {
+            "main": [
+                [
+                    {
+                        "node": "OpenAI GPT-4o Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "OpenAI GPT-4o Response": {
+            "main": [
+                [
+                    {
+                        "node": "Send WhatsApp Reply",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Send WhatsApp Reply": {
+            "main": [
+                [
+                    {
+                        "node": "Update Lead Status",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

@@ -1,0 +1,232 @@
+{
+    "name": "1. Lead Discovery & Enrichment",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "cronExpression",
+                            "expression": "0 8 * * *"
+                        }
+                    ]
+                }
+            },
+            "id": "trigger_node",
+            "name": "Schedule Trigger",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                250,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://maps.googleapis.com/maps/api/place/textsearch/json",
+                "sendQueryParameters": true,
+                "queryParametersUi": {
+                    "parameter": [
+                        {
+                            "name": "query",
+                            "value": "={{ $json.category }} in {{ $json.area }}"
+                        },
+                        {
+                            "name": "key",
+                            "value": "={{ $env.GOOGLE_MAPS_API_KEY }}"
+                        }
+                    ]
+                }
+            },
+            "id": "google_maps_node",
+            "name": "Google Maps Places",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                450,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://graph.facebook.com/v18.0/search",
+                "sendQueryParameters": true,
+                "queryParametersUi": {
+                    "parameter": [
+                        {
+                            "name": "type",
+                            "value": "page"
+                        },
+                        {
+                            "name": "q",
+                            "value": "={{ $json.category }}"
+                        },
+                        {
+                            "name": "center",
+                            "value": "={{ $json.lat }},{{ $json.lng }}"
+                        },
+                        {
+                            "name": "distance",
+                            "value": "5000"
+                        },
+                        {
+                            "name": "access_token",
+                            "value": "={{ $env.FACEBOOK_TOKEN }}"
+                        }
+                    ]
+                }
+            },
+            "id": "facebook_api_node",
+            "name": "Facebook Graph API",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                450,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://app.scrapingbee.com/api/v1/",
+                "sendQueryParameters": true,
+                "queryParametersUi": {
+                    "parameter": [
+                        {
+                            "name": "api_key",
+                            "value": "={{ $env.SCRAPINGBEE_API_KEY }}"
+                        },
+                        {
+                            "name": "url",
+                            "value": "https://www.instagram.com/explore/tags/nairobi/"
+                        }
+                    ]
+                }
+            },
+            "id": "instagram_scraper_node",
+            "name": "Instagram Scraper",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                450,
+                600
+            ]
+        },
+        {
+            "parameters": {},
+            "id": "merge_node",
+            "name": "Merge Results",
+            "type": "n8n-nodes-base.merge",
+            "typeVersion": 2.1,
+            "position": [
+                650,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "// Custom script to deduplicate by phone and name\nreturn items;"
+            },
+            "id": "dedup_node",
+            "name": "Deduplication & Logic",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                850,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "INSERT INTO leads (business_name, category, location_area, status) VALUES ($1, $2, $3, 'enriched') ON CONFLICT DO NOTHING",
+                "queryParams": "={{ [ $json.name, $json.category, $json.area ] }}"
+            },
+            "id": "postgres_insert_node",
+            "name": "PostgreSQL Insert",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                1050,
+                400
+            ]
+        }
+    ],
+    "connections": {
+        "Schedule Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Google Maps Places",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Facebook Graph API",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Instagram Scraper",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Google Maps Places": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Results",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Facebook Graph API": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Results",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "Instagram Scraper": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Results",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "Merge Results": {
+            "main": [
+                [
+                    {
+                        "node": "Deduplication & Logic",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Deduplication & Logic": {
+            "main": [
+                [
+                    {
+                        "node": "PostgreSQL Insert",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

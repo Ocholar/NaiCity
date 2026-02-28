@@ -1,0 +1,198 @@
+{
+    "name": "6. Conversion Tracking & Analytics",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "webhook/naicity-conversion"
+            },
+            "id": "conversion_webhook",
+            "name": "Conversion Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                250,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT lead_id FROM leads WHERE business_name ILIKE '%' || $1 || '%'",
+                "queryParams": "={{ [ $json.body.business_name ] }}"
+            },
+            "id": "match_lead_node",
+            "name": "Fuzzy Match Lead",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                450,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "UPDATE leads SET status='converted', conversion_time_hours = EXTRACT(EPOCH FROM (NOW() - created_at))/3600 WHERE lead_id=$1",
+                "queryParams": "={{ [ $json.lead_id ] }}"
+            },
+            "id": "update_conv_record_node",
+            "name": "Update Lead & Record Commission",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                650,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={ \"chat_id\": \"{{ $env.TELEGRAM_CHAT_ID }}\", \"text\": \"🎉 New Conversion! {{ $json.body.business_name }}\" }"
+            },
+            "id": "tg_alert_node",
+            "name": "Alert Telegram",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                850,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "cronExpression",
+                            "expression": "59 23 * * *"
+                        }
+                    ]
+                }
+            },
+            "id": "daily_cron",
+            "name": "Daily Summary Cron",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                250,
+                600
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "SELECT COUNT(*) as leads_enriched, SUM(CASE WHEN status IN ('contacted', 'responded', 'converted') THEN 1 ELSE 0 END) as reached_out, SUM(CASE WHEN status IN ('responded', 'converted') THEN 1 ELSE 0 END) as responses, SUM(CASE WHEN status = 'converted' THEN 1 ELSE 0 END) as conversions FROM leads WHERE DATE(created_at) = CURRENT_DATE;"
+            },
+            "id": "agg_query_node",
+            "name": "Execute Aggregation Array",
+            "type": "n8n-nodes-base.postgresDb",
+            "typeVersion": 2.2,
+            "position": [
+                450,
+                600
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "// Compute Metrics (CPA, Conv Rate)\nreturn items;"
+            },
+            "id": "metric_compute_node",
+            "name": "Compute Metrics",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                650,
+                600
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={ \"chat_id\": \"{{ $env.TELEGRAM_CHAT_ID }}\", \"text\": \"📊 Daily Stats:\\nEnriched: {{ $json.leads_enriched }}\\nReached Out: {{ $json.reached_out }}\\nResponses: {{ $json.responses }}\\nConversions: {{ $json.conversions }}\" }"
+            },
+            "id": "tg_daily_alert_node",
+            "name": "Alert Telegram (Daily Report)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                850,
+                600
+            ]
+        }
+    ],
+    "connections": {
+        "Conversion Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Fuzzy Match Lead",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fuzzy Match Lead": {
+            "main": [
+                [
+                    {
+                        "node": "Update Lead & Record Commission",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Update Lead & Record Commission": {
+            "main": [
+                [
+                    {
+                        "node": "Alert Telegram",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Daily Summary Cron": {
+            "main": [
+                [
+                    {
+                        "node": "Execute Aggregation Array",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Execute Aggregation Array": {
+            "main": [
+                [
+                    {
+                        "node": "Compute Metrics",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Compute Metrics": {
+            "main": [
+                [
+                    {
+                        "node": "Alert Telegram (Daily Report)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}
