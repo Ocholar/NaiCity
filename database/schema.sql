@@ -1,8 +1,6 @@
 -- schema.sql
 -- Lead structure
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS vector;
-
 CREATE TABLE leads (
     lead_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     business_name VARCHAR(255) NOT NULL,
@@ -29,7 +27,6 @@ CREATE TABLE leads (
     enrichment_timestamp TIMESTAMP DEFAULT NOW(),
     created_at TIMESTAMP DEFAULT NOW()
 );
-
 -- AI generated messages
 CREATE TABLE messages (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -43,54 +40,34 @@ CREATE TABLE messages (
     confidence_score FLOAT,
     created_at TIMESTAMP DEFAULT NOW()
 );
-
 -- Conversations table
 CREATE TYPE message_direction AS ENUM ('outbound', 'inbound');
-
 CREATE TABLE conversations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     lead_id UUID REFERENCES leads(lead_id),
-    message_id VARCHAR(255) UNIQUE, -- WhatsApp message ID
+    message_id VARCHAR(255) UNIQUE,
+    -- WhatsApp message ID
     direction message_direction,
     content TEXT,
     intent_classification VARCHAR(50),
-    embedding VECTOR(1536), -- OpenAI embedding
-    metadata JSONB, -- {tokens_used, model, latency_ms}
+    metadata JSONB,
+    -- {tokens_used, model, latency_ms}
     created_at TIMESTAMP DEFAULT NOW(),
     thread_id VARCHAR(255) -- For grouping
 );
-
--- Memory retrieval function
+-- Memory retrieval function (vector search removed)
 CREATE OR REPLACE FUNCTION get_conversation_context(
-    p_lead_id UUID, 
-    p_current_message TEXT,
-    p_limit INT DEFAULT 5
-) RETURNS TABLE (
-    content TEXT,
-    direction VARCHAR,
-    similarity FLOAT
-) AS $$
-DECLARE
-    query_embedding VECTOR(1536);
-BEGIN
-    -- Function openai_embed is assumed to be defined by a pgvector + openai integration,
-    -- or embedding will be done application side in n8n and passed in as a parameter.
-    -- Here we query by an optionally passed embedding:
-    -- SELECT openai_embed(p_current_message) INTO query_embedding;
-    -- For n8n, it's easier to pass the embedding directly to the query.
-    RETURN QUERY
-    SELECT 
-        c.content,
-        c.direction::VARCHAR,
-        -- fallback for now, assuming n8n embedding node passes vector to a parameterized SQL query
-        0.0::FLOAT as similarity 
-    FROM conversations c
-    WHERE c.lead_id = p_lead_id
-    ORDER BY c.created_at DESC
-    LIMIT p_limit;
+        p_lead_id UUID,
+        p_limit INT DEFAULT 5
+    ) RETURNS TABLE (content TEXT, direction VARCHAR) AS $$ BEGIN RETURN QUERY
+SELECT c.content,
+    c.direction::VARCHAR
+FROM conversations c
+WHERE c.lead_id = p_lead_id
+ORDER BY c.created_at DESC
+LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql;
-
 -- Conversions and Analytics Table
 CREATE TABLE conversions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
